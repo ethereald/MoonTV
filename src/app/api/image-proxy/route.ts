@@ -11,8 +11,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing image URL' }, { status: 400 });
   }
 
+  let targetUrl: URL;
   try {
-    const imageResponse = await fetch(imageUrl, {
+    targetUrl = new URL(imageUrl);
+    if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+      throw new Error('Unsupported protocol');
+    }
+  } catch {
+    return NextResponse.json({ error: 'Invalid image URL' }, { status: 400 });
+  }
+
+  try {
+    const imageResponse = await fetch(targetUrl, {
       headers: {
         Referer: 'https://movie.douban.com/',
         'User-Agent':
@@ -28,6 +38,13 @@ export async function GET(request: Request) {
     }
 
     const contentType = imageResponse.headers.get('content-type');
+
+    if (!contentType?.toLowerCase().startsWith('image/')) {
+      return NextResponse.json(
+        { error: 'Upstream response is not an image' },
+        { status: 502 }
+      );
+    }
 
     if (!imageResponse.body) {
       return NextResponse.json(

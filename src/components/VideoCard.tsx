@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { CheckCircle, Heart, Link, PlayCircleIcon } from 'lucide-react';
+import {
+  CheckCircle,
+  Heart,
+  ImageOff,
+  Link,
+  PlayCircleIcon,
+} from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -57,7 +63,10 @@ export default function VideoCard({
 }: VideoCardProps) {
   const router = useRouter();
   const [favorited, setFavorited] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [posterLoaded, setPosterLoaded] = useState(false);
+  const [posterAttempt, setPosterAttempt] = useState<0 | 1 | 2>(() =>
+    poster.trim() ? 0 : 2
+  );
 
   const isAggregate = from === 'search' && !!items?.length;
 
@@ -111,6 +120,38 @@ export default function VideoCard({
       ? 'movie'
       : 'tv'
     : type;
+
+  const originalPosterUrl = actualPoster.trim();
+  const configuredPosterUrl = originalPosterUrl
+    ? processImageUrl(originalPosterUrl)
+    : '';
+  const fallbackPosterUrl = /^https?:\/\//i.test(originalPosterUrl)
+    ? `/api/image-proxy?url=${encodeURIComponent(originalPosterUrl)}`
+    : '';
+  const posterUrl =
+    posterAttempt === 1 ? fallbackPosterUrl : configuredPosterUrl;
+
+  useEffect(() => {
+    setPosterLoaded(false);
+    setPosterAttempt(actualPoster.trim() ? 0 : 2);
+  }, [actualPoster]);
+
+  const handlePosterError = () => {
+    setPosterLoaded(false);
+
+    // Some providers reject browser hotlinks but accept the same request from
+    // our server-side proxy. Avoid retrying when it is already the active URL.
+    if (
+      posterAttempt === 0 &&
+      fallbackPosterUrl &&
+      configuredPosterUrl !== fallbackPosterUrl
+    ) {
+      setPosterAttempt(1);
+      return;
+    }
+
+    setPosterAttempt(2);
+  };
 
   // 获取收藏状态
   useEffect(() => {
@@ -275,16 +316,34 @@ export default function VideoCard({
       {/* 海报容器 */}
       <div className='relative aspect-[2/3] overflow-hidden rounded-lg'>
         {/* 骨架屏 */}
-        {!isLoading && <ImagePlaceholder aspectRatio='aspect-[2/3]' />}
+        {!posterLoaded && posterAttempt !== 2 && (
+          <ImagePlaceholder aspectRatio='aspect-[2/3]' />
+        )}
         {/* 图片 */}
-        <Image
-          src={processImageUrl(actualPoster)}
-          alt={actualTitle}
-          fill
-          className='object-cover'
-          referrerPolicy='no-referrer'
-          onLoadingComplete={() => setIsLoading(true)}
-        />
+        {posterAttempt !== 2 && posterUrl && (
+          <Image
+            key={posterUrl}
+            src={posterUrl}
+            alt={actualTitle}
+            fill
+            className={`object-cover transition-opacity duration-200 ${
+              posterLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            referrerPolicy='no-referrer'
+            onError={handlePosterError}
+            onLoad={() => setPosterLoaded(true)}
+          />
+        )}
+        {posterAttempt === 2 && (
+          <div
+            className='absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gray-100 px-3 text-center text-gray-400 dark:bg-gray-800 dark:text-gray-500'
+            role='img'
+            aria-label={`${actualTitle || '影片'}海报不可用`}
+          >
+            <ImageOff className='h-8 w-8' aria-hidden='true' />
+            <span className='text-xs'>暂无海报</span>
+          </div>
+        )}
 
         {/* 悬浮遮罩 */}
         <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100' />
